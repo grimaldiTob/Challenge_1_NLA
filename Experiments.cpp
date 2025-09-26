@@ -15,32 +15,44 @@ using namespace std;
 /* The idea behind the following function is to return an mn*mn Sparse matrix
     which has a maximum number of non-zero diagonal equal to the total entries
     of a filter matrix passed as reference in the function. */
-SparseMatrix<double> matrix_formation(MatrixXd& filter, int mn)
-{
-    vector<Triplet<double>> triplets;
-    triplets.reserve(mn * filter.size()); 
+SparseMatrix<double> matrix_formation(MatrixXd& filter, int m, int n) {
+    int mn = m * n;
 
-    VectorXd filter_v = Map<VectorXd>(filter.data(), filter.size());
-    int center = filter.size() / 2;
+    int fh = filter.rows();  // filter height
+    int fw = filter.cols();  // filter width
+    int h_center = fh / 2;   // kernel center (rows)
+    int w_center = fw / 2;   // kernel center (cols)
 
-    for (int i = -center; i < center; i++){
-        int idx = i + center;
-        int diagLen = mn - abs(i);
+    std::vector<Triplet<double>> triplets;
+    triplets.reserve(fh * fw * mn); // rough reserve
 
-        if(diagLen > 0) {
-            for(int k = 0; k < diagLen; k++){
-                int row = (i >= 0) ? k : k-i;
-                int col = row + i;
-                triplets.emplace_back(row, col, filter_v(idx));
+    auto idx = [n](int i, int j) { return i * n + j; }; // lambda function to convert 
+    // 2D indices to 1D index (don't ask more than this, I found it on StackOverflow...)
+
+    for (int i = 0; i < m; ++i) {
+        for (int j = 0; j < n; ++j) {
+            int row = idx(i, j); // retrieve row-major index from i and j (row and col indexes of the image)
+            for (int di = 0; di < fh; ++di) {
+                for (int dj = 0; dj < fw; ++dj) { // loop over the filter entries
+                    double w = filter(di, dj);   // weight of the filter entry
+                    if (w == 0.0) continue; // ignore the zero entries in the filter
+
+                    int ni = i + (di - h_center); // corresponding row index in the image
+                    int nj = j + (dj - w_center); // corresponding column index in the image
+
+                    // zero-padding: skip if outside image
+                    if (ni < 0 || ni >= m || nj < 0 || nj >= n) continue;
+
+                    int col = idx(ni, nj); // retrieve column index in the mn x mn matrix
+                    triplets.emplace_back(row, col, w); // add the entry to the triplet list
+                }
             }
-            //VectorXd d = VectorXd::Constant(diagLen, filter_v(idx));
-            //A.diagonal(i) = d;
         }
     }
 
-    SparseMatrix<double> sparse(mn,mn);
-    sparse.setFromTriplets(triplets.begin(), triplets.end());
-    return sparse;
+    SparseMatrix<double> A(mn, mn);
+    A.setFromTriplets(triplets.begin(), triplets.end());
+    return A;
 }
 
 int main(int argc, char* argv[]) 
@@ -118,7 +130,7 @@ int main(int argc, char* argv[])
     delete[] output_data;
 
     // PART 3
-    // Reshape images into a nm x 1 vector
+    // Reshape images into a nm x 1 vector in row-major order
     VectorXd v = Map<VectorXd>(image_matrix.data(), image_matrix.size());
     VectorXd w = Map<VectorXd>(noisy_image.data(), noisy_image.size());
     std::cout << "Image vector size: " << v.size() << std::endl;
@@ -129,15 +141,15 @@ int main(int argc, char* argv[])
     // PART 4 
     // Smooth the image trough the smoothing kernel H_{av1}
 
-    SparseMatrix<double> A1 = matrix_formation(H_av1, v.size());
+    SparseMatrix<double> A1 = matrix_formation(H_av1, height, width);
     cout << "The number of nnz in A1 is " << A1.nonZeros() << endl;
 
     // PART 5 
     VectorXd smoothed_noisy_image = A1 * w;
     smoothed_noisy_image = smoothed_noisy_image.cwiseMax(0.0).cwiseMin(255.0);
     unsigned char* output_data_2 = new unsigned char[width * height];
-    for (int i = 0; i < width*height; i++){
-        output_data_2[i] = static_cast<unsigned char>(smoothed_noisy_image[i]);
+    for (int j = 0; j < width; j++) {
+        output_data_2[j] = static_cast<unsigned char>(smoothed_noisy_image[j]);
     }
     const std::string output_image_path3 = "smoothed_noisy_2.png";
     if (stbi_write_png(output_image_path3.c_str(), width, height, 1,
