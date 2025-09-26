@@ -75,6 +75,14 @@ int main(int argc, char* argv[])
              0, 1, 1;
     H_av1 = (1.0/8.0) * H_av1;
 
+    MatrixXd H_av2(5,5);
+    H_av2(0,0)=0; H_av2(0,1)=1; H_av2(0,2)=2; H_av2(0,3)=1; H_av2(0,4)=0;
+    H_av2(1,0)=1; H_av2(1,1)=2; H_av2(1,2)=4; H_av2(1,3)=2; H_av2(1,4)=1;
+    H_av2(2,0)=2; H_av2(2,1)=4; H_av2(2,2)=8; H_av2(2,3)=4; H_av2(2,4)=2;
+    H_av2(3,0)=1; H_av2(3,1)=2; H_av2(3,2)=4; H_av2(3,3)=2; H_av2(3,4)=1;
+    H_av2(4,0)=0; H_av2(4,1)=1; H_av2(4,2)=2; H_av2(4,3)=1; H_av2(4,4)=0;
+    H_av2 = (1.0/80.0) * H_av2;
+
 
     // PART 1
     //Load the image using stb_image
@@ -148,7 +156,7 @@ int main(int argc, char* argv[])
     // Smooth the image trough the smoothing kernel H_{av1}
 
     SparseMatrix<double> A1 = matrix_formation(H_av1, height, width);
-    cout << "The number of nnz in A1 is " << A1.nonZeros() << endl;
+    cout << "The number of nnz in A1 is " << A1.nonZeros() << endl << endl;
 
     // PART 5 
     VectorXd smoothed_noisy_image = A1 * w;
@@ -167,7 +175,33 @@ int main(int argc, char* argv[])
     }
     delete[] output_data_2;
     
-    cout << "Process finished with no errors (so far...)" << endl;
+    // PART 6 
 
+    SparseMatrix<double> A2 = matrix_formation(H_av2, height, width);
+    cout << "The number of nnz in A2 is " << A2.nonZeros() << endl;
+    cout << "A2 is symmetric: " << (A2.isApprox(A2.transpose()) ? "Yes" : "No") << endl  << endl;
+
+    // PART 7
+
+    VectorXd smoothed_noisy_image_2 = A2 * w;
+    smoothed_noisy_image_2 = smoothed_noisy_image_2.cwiseMax(0.0).cwiseMin(255.0);
+    unsigned char* output_data_3 = new unsigned char[width * height];
+    for (int j = 0; j < width; j++) {
+        output_data_3[j] = static_cast<unsigned char>(smoothed_noisy_image_2[j]);
+    }
+    const std::string output_image_path4 = "smoothed_noisy_3.png";
+    if (stbi_write_png(output_image_path4.c_str(), width, height, 1,
+                     output_data_3, width) == 0) 
+    {
+        std::cerr << "Error: Could not save output image" << std::endl;
+        delete[] output_data_3;
+        return 1;
+    }
+    delete[] output_data_3;
+
+    // PART 8
+    
+    cout << "Process finished with no errors (so far...)" << endl;
+    
     return 0;
 }
