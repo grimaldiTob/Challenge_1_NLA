@@ -15,7 +15,7 @@ using namespace std;
 /* The idea behind the following function is to return an mn*mn Sparse matrix
     which has a maximum number of non-zero diagonal equal to the total entries
     of a filter matrix passed as reference in the function. */
-SparseMatrix<double> matrix_formation(MatrixXd& filter, int m, int n) {
+SparseMatrix<double> matrix_formation(const MatrixXd& filter, int m, int n) {
     int mn = m * n;
 
     int fh = filter.rows();  // filter height
@@ -23,8 +23,11 @@ SparseMatrix<double> matrix_formation(MatrixXd& filter, int m, int n) {
     int h_center = fh / 2;   // kernel center (rows)
     int w_center = fw / 2;   // kernel center (cols)
 
+    int nnz_filter = (filter.array() != 0.0).count(); // filter could have zeros so we get the number of non-zeros
+
     std::vector<Triplet<double>> triplets;
-    triplets.reserve(fh * fw * mn); // rough reserve
+    triplets.reserve(nnz_filter * mn); // we reserve less space if there are zeros in filter --> even better if the filter gets big and sparse
+    // we allocate just the space for the nnz elements in the filter *mn (could be updated even more knowing the number of indexes out of bound but I guess it's ok)
 
     auto idx = [n](int i, int j) { return i * n + j; }; // lambda function to convert 
     // 2D indices to 1D index (don't ask more than this, I found it on StackOverflow...)
@@ -97,7 +100,7 @@ int main(int argc, char* argv[])
     stbi_image_free(image_data); // Free the image memory
     //std::cout << "Converted matrix:" << std::endl << image_matrix << std::endl;
 
-    // ==================================REQUEST NUMBER 1 ====================================
+    // ================================== REQUEST NUMBER 1 ====================================
     std::cout << "Matrix size: " << image_matrix.rows() << "x" << image_matrix.cols() << std::endl;
 
     // PART 2
@@ -129,6 +132,7 @@ int main(int argc, char* argv[])
     }
     delete[] output_data;
 
+    // ================================ REQUEST NUMBER 3 ====================================
     // PART 3
     // Reshape images into a nm x 1 vector in row-major order
     VectorXd v = Map<VectorXd>(image_matrix.data(), image_matrix.size());
@@ -137,6 +141,8 @@ int main(int argc, char* argv[])
     std::cout << "Noisy image vector size: " << w.size() << "\n" << std::endl;
     std::cout << "Euclidean norm of v: " << v.norm() << std::endl;
     std::cout << "Euclidean norm of w: " << w.norm() << "\n" << std::endl; // not necessary
+    
+    // =============================== REQUEST NUMBER 4 ==================================
     
     // PART 4 
     // Smooth the image trough the smoothing kernel H_{av1}
