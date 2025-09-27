@@ -9,6 +9,7 @@
 #include "stb_image_write.h"
 
 using namespace Eigen;
+typedef Matrix<double, Dynamic, Dynamic, RowMajor> MatrixXdR;
 using namespace std;
 
 
@@ -69,19 +70,24 @@ int main(int argc, char* argv[])
     // ================= Matrices and Constant definitions ===========================
     const char* input_image_path = argv[1];
 
-    MatrixXd H_av1(3,3);
+    MatrixXdR H_av1(3,3);
     H_av1 << 1, 1, 0,
              1, 2, 1,
              0, 1, 1;
     H_av1 = (1.0/8.0) * H_av1;
 
-    MatrixXd H_av2(5,5);
+    /*MatrixXd H_av2(5,5);
     H_av2(0,0)=0; H_av2(0,1)=1; H_av2(0,2)=2; H_av2(0,3)=1; H_av2(0,4)=0;
     H_av2(1,0)=1; H_av2(1,1)=2; H_av2(1,2)=4; H_av2(1,3)=2; H_av2(1,4)=1;
     H_av2(2,0)=2; H_av2(2,1)=4; H_av2(2,2)=8; H_av2(2,3)=4; H_av2(2,4)=2;
     H_av2(3,0)=1; H_av2(3,1)=2; H_av2(3,2)=4; H_av2(3,3)=2; H_av2(3,4)=1;
     H_av2(4,0)=0; H_av2(4,1)=1; H_av2(4,2)=2; H_av2(4,3)=1; H_av2(4,4)=0;
-    H_av2 = (1.0/80.0) * H_av2;
+    H_av2 = (1.0/80.0) * H_av2;*/ // In the pdf, but not actually needed for the challenge
+
+    MatrixXdR H_sh1(3,3);
+    H_sh1 <<  0, -2,  0,
+             -2,  9, -2,
+              0, -2,  0;    
 
 
     // PART 1
@@ -96,7 +102,7 @@ int main(int argc, char* argv[])
     }
     
     // Convert image data to Eigen matrix
-    MatrixXd image_matrix(height, width);
+    MatrixXdR image_matrix(height, width);
     for(int i = 0; i < height; i++)
     {
         for(int j = 0; j < width; j++)
@@ -113,10 +119,10 @@ int main(int argc, char* argv[])
 
     // PART 2
     // Adding noise to the image
-    MatrixXd noise = MatrixXd::Random(image_matrix.rows(), image_matrix.cols()) * 40; // noise in range [-40, 40]
+    MatrixXdR noise = MatrixXdR::Random(image_matrix.rows(), image_matrix.cols()) * 40; // noise in range [-40, 40]
 
     // Sum and clamp to [0,255]
-    MatrixXd noisy_image = image_matrix + noise;
+    MatrixXdR noisy_image = image_matrix + noise;
     noisy_image = noisy_image.cwiseMax(0.0).cwiseMin(255.0);
 
     // Convert back to unsigned char for saving
@@ -143,8 +149,8 @@ int main(int argc, char* argv[])
     // ================================ REQUEST NUMBER 3 ====================================
     // PART 3
     // Reshape images into a nm x 1 vector in row-major order
-    VectorXd v = Map<VectorXd>(image_matrix.data(), image_matrix.size());
-    VectorXd w = Map<VectorXd>(noisy_image.data(), noisy_image.size());
+    VectorXd v = Map<VectorXd, 0, Stride<1, 1>>(image_matrix.data(), image_matrix.size(), Stride<1, 1>(1, 1));
+    VectorXd w = Map<VectorXd, 0, Stride<1, 1>>(noisy_image.data(), noisy_image.size(), Stride<1, 1>(1, 1));
     std::cout << "Image vector size: " << v.size() << std::endl;
     std::cout << "Noisy image vector size: " << w.size() << "\n" << std::endl;
     std::cout << "Euclidean norm of v: " << v.norm() << std::endl;
@@ -153,7 +159,7 @@ int main(int argc, char* argv[])
     // =============================== REQUEST NUMBER 4 ==================================
     
     // PART 4 
-    // Smooth the image trough the smoothing kernel H_{av1}
+    // Smooth the noisy image trough the smoothing kernel H_{av1}
 
     SparseMatrix<double> A1 = matrix_formation(H_av1, height, width);
     cout << "The number of nnz in A1 is " << A1.nonZeros() << endl << endl;
@@ -162,8 +168,11 @@ int main(int argc, char* argv[])
     VectorXd smoothed_noisy_image = A1 * w;
     smoothed_noisy_image = smoothed_noisy_image.cwiseMax(0.0).cwiseMin(255.0);
     unsigned char* output_data_2 = new unsigned char[width * height];
-    for (int j = 0; j < width; j++) {
-        output_data_2[j] = static_cast<unsigned char>(smoothed_noisy_image[j]);
+    for (int i = 0; i < height; i++) {
+        for (int j = 0; j < width; j++) {
+            int index = i * width + j; // row-major order
+            output_data_2[index] = static_cast<unsigned char>(smoothed_noisy_image[index]);
+        }
     }
     const std::string output_image_path3 = "smoothed_noisy_2.png";
     if (stbi_write_png(output_image_path3.c_str(), width, height, 1,
@@ -177,19 +186,23 @@ int main(int argc, char* argv[])
     
     // PART 6 
 
-    SparseMatrix<double> A2 = matrix_formation(H_av2, height, width);
+    SparseMatrix<double> A2 = matrix_formation(H_sh1, height, width);
     cout << "The number of nnz in A2 is " << A2.nonZeros() << endl;
     cout << "A2 is symmetric: " << (A2.isApprox(A2.transpose()) ? "Yes" : "No") << endl  << endl;
 
     // PART 7
-
-    VectorXd smoothed_noisy_image_2 = A2 * w;
-    smoothed_noisy_image_2 = smoothed_noisy_image_2.cwiseMax(0.0).cwiseMin(255.0);
+    // TODO: Sharp image does not seem that much sharp! It actually is noisier than the original one...
+    VectorXd sharpened_original_image_2 = A2 * v; // sharpening the original image
+    // Clamp values to [0, 255]
+    sharpened_original_image_2 = sharpened_original_image_2.cwiseMax(0.0).cwiseMin(255.0);
     unsigned char* output_data_3 = new unsigned char[width * height];
-    for (int j = 0; j < width; j++) {
-        output_data_3[j] = static_cast<unsigned char>(smoothed_noisy_image_2[j]);
+    for (int i = 0; i < height; i++) {
+        for (int j = 0; j < width; j++) {
+            int index = i * width + j; // row-major order
+            output_data_3[index] = static_cast<unsigned char>(sharpened_original_image_2[index]);
+        }
     }
-    const std::string output_image_path4 = "smoothed_noisy_3.png";
+    const std::string output_image_path4 = "sharpened_original.png";
     if (stbi_write_png(output_image_path4.c_str(), width, height, 1,
                      output_data_3, width) == 0) 
     {
