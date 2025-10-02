@@ -221,11 +221,10 @@ int main(int argc, char* argv[])
     fprintf(outW,"%%%%MatrixMarket matrix array real general\n");
     fprintf(outW,"%d %d\n", n, 1);
     for (int i=0; i<n; i++) {
-        fprintf(outW,"%d %f\n", i+1, w(i)); // MatrixMarket is 1-based indexing
+        fprintf(outW,"%d %f\n", i, w(i)); // TODO: understand if the index should be i or i++
     }
     fclose(outW);
     cout << "w vector saved in w.mtx" << endl;
-    cout << "Process finished with no errors (so far...)" << endl;
 
     // ================================== REQUEST 9 ================================
 
@@ -243,10 +242,10 @@ int main(int argc, char* argv[])
 
     // ================================== REQUEST 10 ================================
 
-    SparseMatrix<double> A3 = matrix_formation(H_ed2, width, height);
+    SparseMatrix<double> A3 = matrix_formation(H_ed2, height, width);
 
     bool A3_sym = A3.isApprox(A3.transpose());
-    cout << "The number of nnz in A3 is " << A2.nonZeros() << endl;
+    cout << "The number of nnz in A3 is " << A3.nonZeros() << endl;
     cout << "A3 is symmetric: " << ((A3_sym) ? "Yes" : "No") << endl  << endl;
 
     // =================================== REQUEST 11 ===============================
@@ -258,22 +257,30 @@ int main(int argc, char* argv[])
 
     // ==================================== REQUEST 12 ==============================
 
-    SparseMatrix<double> I_A3 = 3*MatrixXd::Identity(A3.rows(), A3.cols()) + A3;
-
+    SparseMatrix<double> I_A3(A3.rows(), A3.cols());
+    I_A3.setIdentity();
+    I_A3 *= 3;
+    I_A3 += A3;
     double tol = 1.e-8;
     int iterations;
     VectorXd y(I_A3.rows());
 
     Eigen::BiCGSTAB<SparseMatrix<double>> bicgstab;
     bicgstab.setTolerance(tol);
+    bicgstab.setMaxIterations(1000); 
     
     bicgstab.compute(I_A3);
     y = bicgstab.solve(w);
+    if (bicgstab.info() != Success) {
+        std::cerr << "Solver did not converge!" << std::endl;
+    }
 
     cout << "Relative residual is: " << bicgstab.error() << endl;
     cout << "#iterations: " << bicgstab.iterations() << endl;
 
     save_image(y, width, height, "y_image.png");    
 
+
+    cout << "Process finished with no errors (so far...)" << endl;
     return 0;
 }
