@@ -2,6 +2,8 @@
 #include <Eigen/Sparse>
 #include <iostream>
 #include <cstdlib>
+#include <unsupported/Eigen/SparseExtra>
+#include <unsupported/Eigen/ArpackSupport>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
@@ -59,6 +61,27 @@ SparseMatrix<double> matrix_formation(const MatrixXd& filter, int m, int n) {
     return A;
 }
 
+/* Function that accepts an image vector as an argument and it saves an image into memory.
+    It also accepts parameters of width and heigth and a string which will be the name of the
+    image file. */
+void save_image(VectorXd& image_v, int width, int height, const string out_image_path){
+    unsigned char* output_data= new unsigned char[width * height];
+    for (int i = 0; i < height; i++) {
+        for (int j = 0; j < width; j++) {
+            int index = i * width + j; // row-major order
+            output_data[index] = static_cast<unsigned char>(image_v[index]);
+        }
+    }
+    if (stbi_write_png(out_image_path.c_str(), width, height, 1,
+                     output_data, width) == 0) 
+    {
+        std::cerr << "Error: Could not save output image" << std::endl;
+        delete[] output_data;
+        return;
+    }
+    delete[] output_data;
+}
+
 int main(int argc, char* argv[]) 
 {
     if (argc < 2) 
@@ -90,6 +113,11 @@ int main(int argc, char* argv[])
               0, -2,  0;    
 
 
+    MatrixXdR H_ed2(3,3);
+    H_ed2 <<  -1, -2,  -1,
+              0,  0, 0,
+              1, 2,  1;    
+
     // PART 1
     //Load the image using stb_image
     int width, height, channels;
@@ -114,10 +142,12 @@ int main(int argc, char* argv[])
     stbi_image_free(image_data); // Free the image memory
     //std::cout << "Converted matrix:" << std::endl << image_matrix << std::endl;
 
-    // ================================== REQUEST NUMBER 1 ====================================
+    // ================================== REQUEST 1 ====================================
     std::cout << "Matrix size: " << image_matrix.rows() << "x" << image_matrix.cols() << std::endl;
 
-    // PART 2
+    
+    // ================================= REQUEST 2 ===================================
+
     // Adding noise to the image
     MatrixXdR noise = MatrixXdR::Random(image_matrix.rows(), image_matrix.cols()) * 40; // noise in range [-40, 40]
 
@@ -125,29 +155,10 @@ int main(int argc, char* argv[])
     MatrixXdR noisy_image = image_matrix + noise;
     noisy_image = noisy_image.cwiseMax(0.0).cwiseMin(255.0);
 
-    // Convert back to unsigned char for saving
-    unsigned char* output_data = new unsigned char[width * height];
-    for(int i = 0; i < height; i++) {
-        for(int j = 0; j < width; j++) {
-            int index = i * width + j;
-            output_data[index] = static_cast<unsigned char>(noisy_image(i, j));
-        }
-    }
+    save_image(noisy_image, width, height, "noisy_image.png");
 
-    // ================================= REQUEST NUMBER 2 ===================================
-    // Save the noisy image
-    const std::string output_image_path2 = "noisy.png";
-    if (stbi_write_png(output_image_path2.c_str(), width, height, 1,
-                     output_data, width) == 0) 
-    {
-        std::cerr << "Error: Could not save output image" << std::endl;
-        delete[] output_data;
-        return 1;
-    }
-    delete[] output_data;
+    // ================================ REQUEST 3 ====================================
 
-    // ================================ REQUEST NUMBER 3 ====================================
-    // PART 3
     // Reshape images into a nm x 1 vector in row-major order
     VectorXd v = Map<VectorXd, 0, Stride<1, 1>>(image_matrix.data(), image_matrix.size(), Stride<1, 1>(1, 1));
     VectorXd w = Map<VectorXd, 0, Stride<1, 1>>(noisy_image.data(), noisy_image.size(), Stride<1, 1>(1, 1));
@@ -156,65 +167,115 @@ int main(int argc, char* argv[])
     std::cout << "Euclidean norm of v: " << v.norm() << std::endl;
     std::cout << "Euclidean norm of w: " << w.norm() << "\n" << std::endl; // not necessary
     
-    // =============================== REQUEST NUMBER 4 ==================================
+    // =============================== REQUEST 4 ==================================
     
-    // PART 4 
     // Smooth the noisy image trough the smoothing kernel H_{av1}
 
     SparseMatrix<double> A1 = matrix_formation(H_av1, height, width);
     cout << "The number of nnz in A1 is " << A1.nonZeros() << endl << endl;
 
-    // PART 5 
+    // =============================== REQUEST 5 =================================
+
     VectorXd smoothed_noisy_image = A1 * w;
     smoothed_noisy_image = smoothed_noisy_image.cwiseMax(0.0).cwiseMin(255.0);
-    unsigned char* output_data_2 = new unsigned char[width * height];
-    for (int i = 0; i < height; i++) {
-        for (int j = 0; j < width; j++) {
-            int index = i * width + j; // row-major order
-            output_data_2[index] = static_cast<unsigned char>(smoothed_noisy_image[index]);
-        }
-    }
-    const std::string output_image_path3 = "smoothed_noisy_2.png";
-    if (stbi_write_png(output_image_path3.c_str(), width, height, 1,
-                     output_data_2, width) == 0) 
-    {
-        std::cerr << "Error: Could not save output image" << std::endl;
-        delete[] output_data_2;
-        return 1;
-    }
-    delete[] output_data_2;
     
-    // PART 6 
+    save_image(smoothed_noisy_image, width, height, "smoothed_noisy_image.png");
+    
+    // =============================== REQUEST 6 =================================
 
     SparseMatrix<double> A2 = matrix_formation(H_sh1, height, width);
-    cout << "The number of nnz in A2 is " << A2.nonZeros() << endl;
-    cout << "A2 is symmetric: " << (A2.isApprox(A2.transpose()) ? "Yes" : "No") << endl  << endl;
 
-    // PART 7
+    bool A2_sym = A2.isApprox(A2.transpose());
+    
+    Eigen::SimplicialLLT<SparseMatrix<double>> chol(A2);
+    cout << "A2 is SPD: " << ((A2_sym && chol.info() == Success) ? "Yes" : "No") << endl  << endl;
+        
+    cout << "The number of nnz in A2 is " << A2.nonZeros() << endl;
+
+    // =============================== REQUEST 7 =================================
+
     // TODO: Sharp image does not seem that much sharp! It actually is noisier than the original one...
     VectorXd sharpened_original_image_2 = A2 * v; // sharpening the original image
     // Clamp values to [0, 255]
     sharpened_original_image_2 = sharpened_original_image_2.cwiseMax(0.0).cwiseMin(255.0);
-    unsigned char* output_data_3 = new unsigned char[width * height];
-    for (int i = 0; i < height; i++) {
-        for (int j = 0; j < width; j++) {
-            int index = i * width + j; // row-major order
-            output_data_3[index] = static_cast<unsigned char>(sharpened_original_image_2[index]);
+    
+    save_image(sharpened_original_image_2, width, height, "sharpened_original.png");
+
+    // ================================= REQUEST 8 ================================
+    // saveMarket(A2, "./A2.mtx"); method doesn't work
+    // saveMarketVector(w.transpose(), "./w.mtx");
+
+    int r = A2.rows(); 
+    int c = A2.cols();
+    int nnz = A2.nonZeros();
+    FILE* outA2 = fopen("A2.mtx", "w");
+    fprintf(outA2,"%%%%MatrixMarket matrix coordinate real general\n");
+    fprintf(outA2,"%d %d %d\n", r, c, nnz);
+    for (int i=0; i<r; i++) {
+        for(int j=0;j<c;j++){
+            fprintf(outA2,"%d %d %f\n", i, j , A2.coeff(i, j));
         }
     }
-    const std::string output_image_path4 = "sharpened_original.png";
-    if (stbi_write_png(output_image_path4.c_str(), width, height, 1,
-                     output_data_3, width) == 0) 
-    {
-        std::cerr << "Error: Could not save output image" << std::endl;
-        delete[] output_data_3;
-        return 1;
-    }
-    delete[] output_data_3;
+    fclose(outA2);
 
-    // PART 8
-    
+    int n = w.size();
+    FILE* outW = fopen("w.mtx", "w");
+    fprintf(outW,"%%%%MatrixMarket matrix array real general\n");
+    fprintf(outW,"%d %d\n", n, 1);
+    for (int i=0; i<n; i++) {
+        fprintf(outW,"%d %f\n", n, w(i));
+    }
+    fclose(outW);
+
     cout << "Process finished with no errors (so far...)" << endl;
+
+    // ================================== REQUEST 9 ================================
+
+    /* Da quanto ho capito si dovrebbe prendere il sol.mtx che riceviamo da LIS e spostarlo
+        nella cartella Challenge e a quel punto runnando sto codice ti salva anche la nuova immagine.
+        Si potrebbe fare tipo un check dove magari se viene trovato un file sol.mtx allora esegue sta
+        routine sennò la skippa. Penso si possa fare almeno finchè non troviamo una soluzione.*/
+
+
+    //VectorXd x(A2.rows());
+    //loadMarket(x, "./sol.mtx")
     
+    //save_image(x, width, height, "immagine_a_caso.png");
+
+
+    // ================================== REQUEST 10 ================================
+
+    SparseMatrix<double> A3 = matrix_formation(H_ed2, width, height);
+
+    bool A3_sym = A3.isApprox(A3.transpose());
+    cout << "The number of nnz in A3 is " << A2.nonZeros() << endl;
+    cout << "A3 is symmetric: " << ((A3_sym) ? "Yes" : "No") << endl  << endl;
+
+    // =================================== REQUEST 11 ===============================
+
+    VectorXd sobel_filter_image = A3*v;
+    sobel_filter_image = sobel_filter_image.cwiseMax(0.0).cwiseMin(255.0);
+
+    save_image(sobel_filter_image, width, height, "sobel_filtered_image.png");
+
+    // ==================================== REQUEST 12 ==============================
+
+    SparseMatrix<double> I_A3 = 3*MatrixXd::Identity(A3.rows(), A3.cols()) + A3;
+
+    double tol = 1.e-8;
+    int iterations;
+    VectorXd y(I_A3.rows());
+
+    Eigen::BiCGSTAB<SparseMatrix<double>> bicgstab;
+    bicgstab.setTolerance(tol);
+    
+    bicgstab.compute(I_A3);
+    y = bicgstab.solve(w);
+
+    cout << "Relative residual is: " << bicgstab.error() << endl;
+    cout << "#iterations: " << bicgstab.iterations() << endl;
+
+    save_image(y, width, height, "y_image.png");    
+
     return 0;
 }
