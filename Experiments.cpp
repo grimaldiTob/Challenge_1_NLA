@@ -64,7 +64,7 @@ SparseMatrix<double> matrix_formation(const MatrixXd& filter, int m, int n) {
 /* Function that accepts an image vector as an argument and it saves an image into memory.
     It also accepts parameters of width and heigth and a string which will be the name of the
     image file. */
-void save_image(VectorXd& image_v, int width, int height, const string out_image_path){
+void save_image(const VectorXd& image_v, int width, int height, const string out_image_path){
     unsigned char* output_data= new unsigned char[width * height];
     for (int i = 0; i < height; i++) {
         for (int j = 0; j < width; j++) {
@@ -154,14 +154,14 @@ int main(int argc, char* argv[])
     // Sum and clamp to [0,255]
     MatrixXdR noisy_image = image_matrix + noise;
     noisy_image = noisy_image.cwiseMax(0.0).cwiseMin(255.0);
-
-    save_image(noisy_image, width, height, "noisy_image.png");
+    VectorXd w = Map<VectorXd>(noisy_image.data(), noisy_image.size());
+    save_image(w, width, height, "noisy_image.png");
 
     // ================================ REQUEST 3 ====================================
 
     // Reshape images into a nm x 1 vector in row-major order
-    VectorXd v = Map<VectorXd, 0, Stride<1, 1>>(image_matrix.data(), image_matrix.size(), Stride<1, 1>(1, 1));
-    VectorXd w = Map<VectorXd, 0, Stride<1, 1>>(noisy_image.data(), noisy_image.size(), Stride<1, 1>(1, 1));
+    VectorXd v = Map<VectorXd>(image_matrix.data(), image_matrix.size());
+    //VectorXd w = Map<VectorXd>(noisy_image.data(), noisy_image.size());
     std::cout << "Image vector size: " << v.size() << std::endl;
     std::cout << "Noisy image vector size: " << w.size() << "\n" << std::endl;
     std::cout << "Euclidean norm of v: " << v.norm() << std::endl;
@@ -194,7 +194,6 @@ int main(int argc, char* argv[])
 
     // =============================== REQUEST 7 =================================
 
-    // TODO: Sharp image does not seem that much sharp! It actually is noisier than the original one...
     VectorXd sharpened_original_image_2 = A2 * v; // sharpening the original image
     // Clamp values to [0, 255]
     sharpened_original_image_2 = sharpened_original_image_2.cwiseMax(0.0).cwiseMin(255.0);
@@ -211,22 +210,21 @@ int main(int argc, char* argv[])
     FILE* outA2 = fopen("A2.mtx", "w");
     fprintf(outA2,"%%%%MatrixMarket matrix coordinate real general\n");
     fprintf(outA2,"%d %d %d\n", r, c, nnz);
-    for (int i=0; i<r; i++) {
-        for(int j=0;j<c;j++){
-            fprintf(outA2,"%d %d %f\n", i, j , A2.coeff(i, j));
-        }
-    }
+    for (int k=0; k<A2.outerSize(); ++k)
+        for (SparseMatrix<double>::InnerIterator it(A2, k); it; ++it)
+            fprintf(outA2, "%d %d %f\n", it.row(), it.col(), it.value());
     fclose(outA2);
+    cout << "A2 matrix saved in A2.mtx" << endl;
 
     int n = w.size();
     FILE* outW = fopen("w.mtx", "w");
     fprintf(outW,"%%%%MatrixMarket matrix array real general\n");
     fprintf(outW,"%d %d\n", n, 1);
     for (int i=0; i<n; i++) {
-        fprintf(outW,"%d %f\n", n, w(i));
+        fprintf(outW,"%d %f\n", i+1, w(i)); // MatrixMarket is 1-based indexing
     }
     fclose(outW);
-
+    cout << "w vector saved in w.mtx" << endl;
     cout << "Process finished with no errors (so far...)" << endl;
 
     // ================================== REQUEST 9 ================================
