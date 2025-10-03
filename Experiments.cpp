@@ -3,7 +3,6 @@
 #include <iostream>
 #include <cstdlib>
 #include <unsupported/Eigen/SparseExtra>
-#include <unsupported/Eigen/ArpackSupport>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
@@ -211,19 +210,25 @@ int main(int argc, char* argv[])
     fprintf(outA2,"%%%%MatrixMarket matrix coordinate real general\n");
     fprintf(outA2,"%d %d %d\n", r, c, nnz);
     for (int k=0; k<A2.outerSize(); ++k)
+    {
         for (SparseMatrix<double>::InnerIterator it(A2, k); it; ++it)
-            fprintf(outA2, "%d %d %f\n", it.row(), it.col(), it.value());
+        {
+            fprintf(outA2, "%d %d %f\n", static_cast<int>(it.row()) + 1, static_cast<int>(it.col()) + 1, it.value());  // TODO: understand if the index should be i or i+1
+        }
+    }
     fclose(outA2);
+    //std::string matrixFileOut("./A2.mtx");
+    //Eigen::saveMarket(A2, matrixFileOut);
     cout << "A2 matrix saved in A2.mtx" << endl;
 
     int n = w.size();
-    FILE* outW = fopen("w.mtx", "w");
-    fprintf(outW,"%%%%MatrixMarket matrix array real general\n");
-    fprintf(outW,"%d %d\n", n, 1);
-    for (int i=0; i<n; i++) {
-        fprintf(outW,"%d %f\n", i, w(i)); // TODO: understand if the index should be i or i++
+    FILE* out = fopen("w.mtx","w");
+    fprintf(out,"%%%%MatrixMarket vector coordinate real general\n");
+    fprintf(out,"%d\n", n);
+    for (int i = 0; i < n; i++) {
+        fprintf(out,"%d %f\n", i + 1, w(i)); //TODO: understand if mtx is 1-base indexed
     }
-    fclose(outW);
+    fclose(out);
     cout << "w vector saved in w.mtx" << endl;
 
     // ================================== REQUEST 9 ================================
@@ -234,10 +239,11 @@ int main(int argc, char* argv[])
         routine sennò la skippa. Penso si possa fare almeno finchè non troviamo una soluzione.*/
 
 
-    //VectorXd x(A2.rows());
-    //loadMarket(x, "./sol.mtx")
-    
-    //save_image(x, width, height, "immagine_a_caso.png");
+    // Load x from sol.mtx
+    VectorXd x(A2.rows());
+    loadMarketVector(x, "./sol_eigen.mtx"); // Make sure to load the eigen-compatible version of sol.mtx
+    x = x.cwiseMax(0.0).cwiseMin(255.0);
+    save_image(x, width, height, "x.png");
 
 
     // ================================== REQUEST 10 ================================
