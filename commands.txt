@@ -1,0 +1,5 @@
+g++ -I ${mkEigenInc} Experiments.cpp -o experiments -Wall --> compile c++ script 
+mpicc -DUSE_MPI -I${mkLisInc} -L${mkLisLib} -llis test1.c -o test1 --> compile lis script
+
+
+./test

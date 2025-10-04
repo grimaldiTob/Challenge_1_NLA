@@ -3,6 +3,7 @@
 #include <iostream>
 #include <cstdlib>
 #include <unsupported/Eigen/SparseExtra>
+#include <filesystem>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
@@ -38,7 +39,7 @@ SparseMatrix<double> matrix_formation(const MatrixXd& filter, int m, int n) {
         for (int j = 0; j < n; ++j) {
             int row = idx(i, j); // retrieve row-major index from i and j (row and col indexes of the image)
             for (int di = 0; di < fh; ++di) {
-                for (int dj = 0; dj < fw; ++dj) { // loop over the filter entries
+                for (int dj = 0; dj < fw; ++dj) {
                     double w = filter(di, dj);   // weight of the filter entry
                     if (w == 0.0) continue; // ignore the zero entries in the filter
 
@@ -48,8 +49,8 @@ SparseMatrix<double> matrix_formation(const MatrixXd& filter, int m, int n) {
                     // zero-padding: skip if outside image
                     if (ni < 0 || ni >= m || nj < 0 || nj >= n) continue;
 
-                    int col = idx(ni, nj); // retrieve column index in the mn x mn matrix
-                    triplets.emplace_back(row, col, w); // add the entry to the triplet list
+                    int col = idx(ni, nj); 
+                    triplets.emplace_back(row, col, w);
                 }
             }
         }
@@ -142,6 +143,7 @@ int main(int argc, char* argv[])
     //std::cout << "Converted matrix:" << std::endl << image_matrix << std::endl;
 
     // ================================== REQUEST 1 ====================================
+    
     std::cout << "Matrix size: " << image_matrix.rows() << "x" << image_matrix.cols() << std::endl;
 
     
@@ -200,7 +202,7 @@ int main(int argc, char* argv[])
     save_image(sharpened_original_image_2, width, height, "sharpened_original.png");
 
     // ================================= REQUEST 8 ================================
-    // saveMarket(A2, "./A2.mtx"); method doesn't work
+    // saveMarket(A2, "./A2.mtx"); method doesn't work if you want to use the matrix in LIS
     // saveMarketVector(w.transpose(), "./w.mtx");
 
     int r = A2.rows(); 
@@ -233,18 +235,19 @@ int main(int argc, char* argv[])
 
     // ================================== REQUEST 9 ================================
 
-    /* Da quanto ho capito si dovrebbe prendere il sol.mtx che riceviamo da LIS e spostarlo
-        nella cartella Challenge e a quel punto runnando sto codice ti salva anche la nuova immagine.
-        Si potrebbe fare tipo un check dove magari se viene trovato un file sol.mtx allora esegue sta
-        routine sennò la skippa. Penso si possa fare almeno finchè non troviamo una soluzione.*/
+    /* Remember to convert .mtx from LIS format to Eigen format with the command written in the README */
 
 
-    // Load x from sol.mtx
-    VectorXd x(A2.rows());
-    loadMarketVector(x, "./sol_eigen.mtx"); // Make sure to load the eigen-compatible version of sol.mtx
-    x = x.cwiseMax(0.0).cwiseMin(255.0);
-    save_image(x, width, height, "x.png");
-
+    // Load x from sol_eigen.mtx. If the matrix is not found the following code permits to continue execution of the rest
+    if(std::filesystem::exists("sol_eigen.mtx")){
+        cout << "sol_eigen.mtx found.\n" << endl;
+        VectorXd x(A2.rows());
+        loadMarketVector(x, "./sol_eigen.mtx"); // Make sure to load the eigen-compatible version of sol.mtx
+        x = x.cwiseMax(0.0).cwiseMin(255.0);
+        save_image(x, width, height, "x.png");
+    } else {
+        cout << "sol_eigen.mtx not found.\n" << endl;
+    }
 
     // ================================== REQUEST 10 ================================
 
@@ -268,7 +271,6 @@ int main(int argc, char* argv[])
     I_A3 *= 3;
     I_A3 += A3;
     double tol = 1.e-8;
-    int iterations;
     VectorXd y(I_A3.rows());
 
     Eigen::BiCGSTAB<SparseMatrix<double>> bicgstab;
